@@ -14,4 +14,5 @@ public class CommonException extends RuntimeException {
     this.status = status;
     this.code = code;
   }
+
 }

@@ -1,8 +1,11 @@
 package com.github.nut077.libraryeventsconsumer.consumer;
 
+import com.github.nut077.libraryeventsconsumer.entity.Book;
 import com.github.nut077.libraryeventsconsumer.entity.LibraryEvent;
+import com.github.nut077.libraryeventsconsumer.entity.LibraryEventType;
 import com.github.nut077.libraryeventsconsumer.repository.LibraryEventsRepository;
 import com.github.nut077.libraryeventsconsumer.service.LibraryEventsService;
+import com.github.nut077.libraryeventsconsumer.utility.ObjectMapperUtil;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -54,7 +57,7 @@ class LibraryEventsConsumerTest {
 
   @BeforeEach
   void setUp() {
-    for (MessageListenerContainer messageListenerContainer: endpointRegistry.getListenerContainers()) {
+    for (MessageListenerContainer messageListenerContainer : endpointRegistry.getListenerContainers()) {
       ContainerTestUtils.waitForAssignment(messageListenerContainer, embeddedKafkaBroker.getPartitionsPerTopic());
     }
   }
@@ -65,7 +68,7 @@ class LibraryEventsConsumerTest {
   }
 
   @Test
-  void public_new_libraryEvent() throws ExecutionException, InterruptedException {
+  void public_new_library_event() throws ExecutionException, InterruptedException {
     // given
     String req = "{\"id\":null,\"libraryEventType\": \"NEW\",\"book\":{\"id\":456,\"bookName\":\"Kafka Using Spring Boot\",\"bookAuthor\":\"Dilip\"}}";
     kafkaTemplate.sendDefault(req).get();
@@ -86,5 +89,47 @@ class LibraryEventsConsumerTest {
     });
   }
 
+  @Test
+  void public_update_library_event() throws ExecutionException, InterruptedException {
+    // given
+    String req = "{\"id\":456,\"libraryEventType\": \"UPDATE\",\"book\":{\"id\":456,\"bookName\":\"Kafka Using Spring Boot\",\"bookAuthor\":\"Dilip\"}}";
+    LibraryEvent libraryEvent = ObjectMapperUtil.convertJsonStringToObject(req, LibraryEvent.class);
+    libraryEvent.getBook().setLibraryEvent(libraryEvent);
+    libraryEventsRepository.save(libraryEvent);
 
+    Book updatedBook = new Book();
+    updatedBook.setId(456L);
+    updatedBook.setBookName("Kafka Using Spring Boot 3.x.x");
+    updatedBook.setBookAuthor("Freedom");
+    libraryEvent.setBook(updatedBook);
+    libraryEvent.setLibraryEventType(LibraryEventType.UPDATE);
+
+    String updatedJson = ObjectMapperUtil.convertObjectToJsonString(libraryEvent);
+    kafkaTemplate.sendDefault(libraryEvent.getId().toString(), updatedJson).get();
+
+    // when
+    CountDownLatch latch = new CountDownLatch(1);
+    latch.await(3, TimeUnit.SECONDS);
+
+    // then
+    verify(libraryEventsConsumer, times(1)).onMessage(isA(ConsumerRecord.class));
+    verify(libraryEventsService, times(1)).processLibraryEvent(isA(ConsumerRecord.class));
+    LibraryEvent persistedLibraryEvent = libraryEventsRepository.findById(libraryEvent.getId()).get();
+    assertEquals("Kafka Using Spring Boot 3.x.x", persistedLibraryEvent.getBook().getBookName());
+  }
+
+  @Test
+  void public_update_null_library_event() throws ExecutionException, InterruptedException {
+    // given
+    String req = "{\"id\":null,\"libraryEventType\": \"UPDATE\",\"book\":{\"id\":456,\"bookName\":\"Kafka Using Spring Boot\",\"bookAuthor\":\"Dilip\"}}";
+    kafkaTemplate.sendDefault(req).get();
+
+    // when
+    CountDownLatch latch = new CountDownLatch(1);
+    latch.await(5, TimeUnit.SECONDS);
+
+    // then
+    verify(libraryEventsConsumer, times(1)).onMessage(isA(ConsumerRecord.class));
+    verify(libraryEventsService, times(1)).processLibraryEvent(isA(ConsumerRecord.class));
+  }
 }
