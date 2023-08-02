@@ -7,6 +7,7 @@ import com.github.nut077.libraryeventsconsumer.utility.ObjectMapperUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.springframework.dao.RecoverableDataAccessException;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
@@ -22,6 +23,9 @@ public class LibraryEventsService {
     LibraryEvent libraryEvent = ObjectMapperUtil.convertJsonStringToObject(consumerRecord.value(), LibraryEvent.class);
     log.info("libraryEvent: {}", ObjectMapperUtil.convertObjectToJsonString(libraryEvent));
 
+    if (libraryEvent.getId() != null && libraryEvent.getId() == 999L) {
+      throw new RecoverableDataAccessException("test recovery exception");
+    }
     switch (libraryEvent.getLibraryEventType()) {
       case NEW -> save(libraryEvent);
       case UPDATE -> {
@@ -33,6 +37,7 @@ public class LibraryEventsService {
   }
 
   private void validate(LibraryEvent libraryEvent) {
+
     if (libraryEvent.getId() == null) {
       throw new BadRequestException("Library event id is missing");
     }
